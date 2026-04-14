@@ -56,9 +56,13 @@ pub fn parse(input: &str) -> Result<RokuFile, String> {
                         };
                         file.output = Some(value.to_string());
                     }
-                    // TODO: File-level pacing that acts as the default for instructions that
-                    // support pacing (e.g. `Type`) unless overridden with `@...`.
-                    Some("Pace") => todo!(),
+
+                    Some("Pace") => {
+                        let Some(value) = value else {
+                            return Err("Pace requires a value".to_string());
+                        };
+                        file.pace = parse_duration(value).map(Some)?;
+                    },
                     Some(unkwown) => return Err(format!("unkwown setting: {}", unkwown)),
                     None => return Err("Set requires a setting name".to_string()),
                 }
@@ -192,6 +196,7 @@ mod tests {
 # example.roku
 Set Shell zsh
 Set Output demo.gif
+Set Pace 250ms
 Sleep 1s
 Enter 3
 Type@250ms "# this is a comment"
@@ -199,8 +204,10 @@ Hide
 Show
 "##;
         let result = parse(input).unwrap();
+        let pace = parse_duration("250ms").map(Some).unwrap();
         assert_eq!(result.shell, Some("zsh".to_string()));
         assert_eq!(result.output, Some("demo.gif".to_string()));
+        assert_eq!(result.pace, pace);
         assert_eq!(
             result.instructions,
             vec![
