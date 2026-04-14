@@ -23,16 +23,16 @@ pub fn parse(input: &str) -> Result<RokuFile, String> {
 
         // Split into `keyword[@modifier]` and the remainder (if any) without losing spaces inside
         // arguments (e.g. quoted strings).
-        let mut parts = line.splitn(2, ' ');
+        let mut line_parts = line.splitn(2, ' ');
 
         // `Type@250ms` style modifier. This is parsed here so each instruction can interpret it
         // independently (e.g. Type uses it as a per-instruction pace).
-        let keyword = parts.next();
+        let keyword = line_parts.next();
         let mut keyword_parts = keyword.unwrap_or("").splitn(2, '@');
         let keyword = keyword_parts.next();
         let modifier = keyword_parts.next();
 
-        let rest = parts.next();
+        let rest = line_parts.next();
 
         match keyword {
             Some("Set") => {
@@ -127,8 +127,42 @@ pub fn parse(input: &str) -> Result<RokuFile, String> {
                 file.instructions.push(Instruction::Show);
             }
             Some("Expect") => {
-                // TODO: Implement output expectations (regex + optional timeout).
-                todo!();
+                let Some(rest) = rest else {
+                    return Err("Expect requires a value. e.g: /hello world/".to_string());
+                };
+
+                let (regex, remainder) = split_regex_and_remainder(rest)?;
+                let timeout = if remainder.is_empty() {
+                    None
+                } else {
+                    let mut parts = remainder.split_whitespace();
+                    let keyword = parts.next();
+                    let value = parts.next();
+                    let extra = parts.next();
+
+                    match (keyword, value, extra) {
+                        (Some("@timeout"), Some(value), None) => Some(parse_duration(value)?),
+                        (Some("@timeout"), None, _) => {
+                            return Err(
+                                "@timeout requires a duration. e.g: @timeout 5s".to_string()
+                            );
+                        }
+                        (Some("@timeout"), Some(_), Some(_)) => {
+                            return Err("too many tokens after @timeout".to_string());
+                        }
+                        (Some(unknown), _, _) => {
+                            return Err(format!("unknown Expect modifier: {}", unknown));
+                        }
+                        _ => {
+                            return Err(
+                                "invalid Expect syntax. e.g: /hello/ @timeout 5s".to_string()
+                            );
+                        }
+                    }
+                };
+
+                file.instructions
+                    .push(Instruction::Expect { regex, timeout })
             }
             Some("ExpectLine") => {
                 // TODO: Implement line-scoped output expectations (regex + optional timeout).
@@ -185,6 +219,39 @@ fn parse_key_count(keyword: &str, rest: Option<&str>) -> Result<u32, String> {
     Ok(count)
 }
 
+/// Extracts a regex pattern delimited by `/` `/` from the input string,
+/// honoring escaped `\/` inside the pattern.
+/// Returns the regex and the remaining unparsed input.
+fn split_regex_and_remainder(rest: &str) -> Result<(String, &str), String> {
+    let data = rest.trim();
+    let Some(mut tail) = data.strip_prefix('/') else {
+        return Err("Expect requires a /regex/ value. e.g: /hello world/".to_string());
+    };
+
+    let mut regex = String::new();
+    while let Some(ch) = tail.chars().next() {
+        tail = &tail[ch.len_utf8()..];
+        match ch {
+            '\\' => {
+                if let Some(next) = tail.chars().next() {
+                    if next == '/' {
+                        tail = &tail[next.len_utf8()..];
+                        regex.push('/');
+                    } else {
+                        regex.push('\\');
+                    }
+                } else {
+                    // Trailing backslash; keep it and let the regex engine decide validity.
+                    regex.push('\\');
+                }
+            }
+            '/' => return Ok((regex, tail.trim_start())),
+            _ => regex.push(ch),
+        }
+    }
+    Err("unterminated /regex/ (missing closing '/')".to_string())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -197,6 +264,7 @@ Set Shell zsh
 Set Output demo.gif
 Set Pace 250ms
 Sleep 1s
+Expect /hel\/lo/ @timeout 5s
 Enter 3
 Type@250ms "# this is a comment"
 Hide
@@ -211,6 +279,10 @@ Show
             result.instructions,
             vec![
                 Instruction::Sleep(Duration::from_secs(1)),
+                Instruction::Expect {
+                    regex: "hel/lo".to_string(),
+                    timeout: Some(Duration::from_secs(5)),
+                },
                 Instruction::Press(Key::Enter, 3),
                 Instruction::Type {
                     text: "# this is a comment".to_string(),
@@ -263,6 +335,37 @@ Show
         for (input, expected) in cases {
             assert_eq!(
                 parse(input).map(|f| f.instructions),
+                expected,
+                "failed for input: {}",
+                input
+            );
+        }
+    }
+
+    #[test]
+    fn test_split_regex_and_remainder() {
+        let cases = vec![
+            ("/hello/", Ok(("hello".to_string(), ""))),
+            ("/hel\\/lo/", Ok(("hel/lo".to_string(), ""))),
+            ("/\\d+/", Ok(("\\d+".to_string(), ""))),
+            (
+                "/hello/ @timeout 5s",
+                Ok(("hello".to_string(), "@timeout 5s")),
+            ),
+            ("  /hello/  ", Ok(("hello".to_string(), ""))),
+            (
+                "/hello",
+                Err("unterminated /regex/ (missing closing '/')".to_string()),
+            ),
+            (
+                "hello",
+                Err("Expect requires a /regex/ value. e.g: /hello world/".to_string()),
+            ),
+        ];
+
+        for (input, expected) in cases {
+            assert_eq!(
+                split_regex_and_remainder(input),
                 expected,
                 "failed for input: {}",
                 input
