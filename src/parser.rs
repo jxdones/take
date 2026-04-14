@@ -56,13 +56,12 @@ pub fn parse(input: &str) -> Result<RokuFile, String> {
                         };
                         file.output = Some(value.to_string());
                     }
-
                     Some("Pace") => {
                         let Some(value) = value else {
                             return Err("Pace requires a value".to_string());
                         };
                         file.pace = parse_duration(value).map(Some)?;
-                    },
+                    }
                     Some(unkwown) => return Err(format!("unkwown setting: {}", unkwown)),
                     None => return Err("Set requires a setting name".to_string()),
                 }

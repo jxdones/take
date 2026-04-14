@@ -22,7 +22,10 @@ pub enum Instruction {
         pace: Option<Duration>,
     },
     Press(Key, u32),
-    Ctrl { key: KeyCombo, modifiers: Modifiers },
+    Ctrl {
+        key: KeyCombo,
+        modifiers: Modifiers,
+    },
 
     Sleep(Duration),
     Expect {
