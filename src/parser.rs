@@ -1,7 +1,7 @@
-use crate::roku::{Instruction, Key, RokuFile};
+use crate::take::{Instruction, Key, TakeFile};
 use std::time::Duration;
 
-/// Parse a `.roku` script into a [`RokuFile`].
+/// Parse a `.take` script into a [`TakeFile`].
 ///
 /// The format is intentionally line-oriented:
 /// - Blank lines are ignored.
@@ -12,8 +12,8 @@ use std::time::Duration;
 ///
 /// This parser aims to be forgiving about whitespace, but strict about unknown keywords/settings
 /// so mistakes are surfaced early.
-pub fn parse(input: &str) -> Result<RokuFile, String> {
-    let mut file = RokuFile::default();
+pub fn parse(input: &str) -> Result<TakeFile, String> {
+    let mut file = TakeFile::default();
 
     for line in input.lines() {
         let line = line.trim();
@@ -179,7 +179,7 @@ pub fn parse(input: &str) -> Result<RokuFile, String> {
     Ok(file)
 }
 
-/// Parse a duration token used in `.roku` scripts.
+/// Parse a duration token used in `.take` scripts.
 ///
 /// Accepted suffixes:
 /// - `ms` for milliseconds (e.g. `250ms`)
@@ -259,7 +259,7 @@ mod tests {
     #[test]
     fn test_parse_simple() {
         let input = r##"
-# example.roku
+# example.take
 Set Shell zsh
 Set Output demo.gif
 Set Pace 250ms

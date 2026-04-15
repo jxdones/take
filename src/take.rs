@@ -14,7 +14,7 @@ pub enum Key {
     Right,
 }
 
-/// A single step in a `.roku` script.
+/// A single step in a `.take` script.
 #[derive(Debug, PartialEq, Clone)]
 pub enum Instruction {
     Type {
@@ -56,9 +56,9 @@ pub struct Modifiers {
     pub alt: bool,
 }
 
-/// Parsed representation of an entire `.roku` file.
+/// Parsed representation of an entire `.take` file.
 #[derive(Debug, Default)]
-pub struct RokuFile {
+pub struct TakeFile {
     pub shell: Option<String>,
     pub output: Option<String>,
     pub pace: Option<Duration>,
