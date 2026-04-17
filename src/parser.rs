@@ -165,8 +165,42 @@ pub fn parse(input: &str) -> Result<TakeFile, String> {
                     .push(Instruction::Expect { regex, timeout })
             }
             Some("ExpectLine") => {
-                // TODO: Implement line-scoped output expectations (regex + optional timeout).
-                todo!();
+                let Some(rest) = rest else {
+                    return Err("ExpectLine requires a value. e.g: /hello world/".to_string());
+                };
+
+                let (regex, remainder) = split_regex_and_remainder(rest)?;
+                let timeout = if remainder.is_empty() {
+                    None
+                } else {
+                    let mut parts = remainder.split_whitespace();
+                    let keyword = parts.next();
+                    let value = parts.next();
+                    let extra = parts.next();
+
+                    match (keyword, value, extra) {
+                        (Some("@timeout"), Some(value), None) => Some(parse_duration(value)?),
+                        (Some("@timeout"), None, _) => {
+                            return Err(
+                                "@timeout requires a duration. e.g: @timeout 5s".to_string()
+                            );
+                        }
+                        (Some("@timeout"), Some(_), Some(_)) => {
+                            return Err("too many tokens after @timeout".to_string());
+                        }
+                        (Some(unkwown), _, _) => {
+                            return Err(format!("unkwown ExpectLine modifier: {}", unkwown));
+                        }
+                        _ => {
+                            return Err(
+                                "invalid ExpectLine syntax. e.g: /hello/ @timeout 5s".to_string()
+                            );
+                        }
+                    }
+                };
+
+                file.instructions
+                    .push(Instruction::ExpectLine { regex, timeout })
             }
             Some("Ctrl") => {
                 // TODO: Implement modifier + key parsing (e.g. Ctrl+C, Ctrl+Shift+X).
@@ -269,6 +303,7 @@ Enter 3
 Type@250ms "# this is a comment"
 Hide
 Show
+ExpectLine /check last line/
 "##;
         let result = parse(input).unwrap();
         let pace = parse_duration("250ms").map(Some).unwrap();
@@ -290,6 +325,10 @@ Show
                 },
                 Instruction::Hide,
                 Instruction::Show,
+                Instruction::ExpectLine {
+                    regex: "check last line".to_string(),
+                    timeout: None,
+                },
             ]
         );
     }
