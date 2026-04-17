@@ -14,14 +14,20 @@ enum Command {
     Play { file: std::path::PathBuf },
 }
 
-fn main() -> Result<()> {
+#[tokio::main]
+async fn main() -> Result<()> {
     let cli = Cli::parse();
     match cli.command {
         Command::Play { file } => {
-            let _content = std::fs::read_to_string(&file)
+            let content = std::fs::read_to_string(&file)
                 .with_context(|| format!("Failed to read .take file: {}", file.display()))?;
 
-            println!("Reading .take file from {}...", file.display());
+            let take_file = take::parser::parse(&content).map_err(|e| anyhow::anyhow!(e))?;
+            let frames = take::player::play(take_file).await?;
+            println!("{} frames captured", frames.len());
+            for (i, frame) in frames.iter().enumerate() {
+                println!("\n--- frame {} ---\n{}", i + 1, frame.screen.contents());
+            }
             Ok(())
         }
     }

@@ -1,5 +1,5 @@
 use crate::take::{Instruction, Key, KeyCombo, Modifiers, TakeFile};
-use std::{time::Duration, u8};
+use std::time::Duration;
 
 /// Parse a `.take` script into a [`TakeFile`].
 ///
