@@ -1,5 +1,5 @@
-use crate::take::{Instruction, Key, TakeFile};
-use std::time::Duration;
+use crate::take::{Instruction, Key, KeyCombo, Modifiers, TakeFile};
+use std::{time::Duration, u8};
 
 /// Parse a `.take` script into a [`TakeFile`].
 ///
@@ -29,11 +29,15 @@ pub fn parse(input: &str) -> Result<TakeFile, String> {
         // independently (e.g. Type uses it as a per-instruction pace).
         let keyword = line_parts.next();
         let mut keyword_parts = keyword.unwrap_or("").splitn(2, '@');
-        let keyword = keyword_parts.next();
+        let mut keyword = keyword_parts.next();
         let modifier = keyword_parts.next();
 
-        let rest = line_parts.next();
+        let mut rest = line_parts.next();
 
+        if line.starts_with("Ctrl+") {
+            keyword = Some("Ctrl");
+            rest = line.split_once('+').map(|(_, rest)| rest)
+        }
         match keyword {
             Some("Set") => {
                 let Some(rest) = rest else {
@@ -203,8 +207,65 @@ pub fn parse(input: &str) -> Result<TakeFile, String> {
                     .push(Instruction::ExpectLine { regex, timeout })
             }
             Some("Ctrl") => {
-                // TODO: Implement modifier + key parsing (e.g. Ctrl+C, Ctrl+Shift+X).
-                todo!();
+                let Some(rest) = rest else {
+                    return Err("Ctrl requires at least a value (digit or char)".to_string());
+                };
+
+                let tokens: Vec<&str> = rest.split('+').collect();
+                if tokens.len() > 2 {
+                    return Err(
+                        "Ctrl supports up to 2 args only. One can be a modifier and the other one a key".to_string()
+                    );
+                }
+
+                let mut key: Option<KeyCombo> = None;
+                let mut modifiers = Modifiers {
+                    shift: false,
+                    alt: false,
+                };
+
+                match tokens[0] {
+                    "Alt" => {
+                        modifiers.alt = true;
+                    }
+                    "Shift" => {
+                        modifiers.shift = true;
+                    }
+                    _ => {
+                        if tokens[0].len() == 1 {
+                            let value = tokens[0].chars().next().unwrap();
+                            if value.is_alphanumeric() && value.is_ascii_digit() {
+                                // Subtract '0's ASCII value (48) from the digit char's ASCII value to get the actual number.
+                                // e.g. '1' as u8 = 49, 49 - 48 = 1
+                                key = Some(KeyCombo::Digit(value as u8 - b'0'));
+                            } else if value.is_alphanumeric() {
+                                key = Some(KeyCombo::Char(value));
+                            }
+                        } else {
+                            return Err("invalid Ctrl syntax".to_string());
+                        }
+                    }
+                }
+
+                if tokens.len() > 1 && tokens[1].len() > 1 {
+                    return Err(format!("invalid option for Ctrl: {}", tokens[1]));
+                }
+
+                if tokens.len() > 1 && tokens[1].len() == 1 {
+                    let value = tokens[1].chars().next().unwrap();
+                    if value.is_alphanumeric() && value.is_ascii_digit() {
+                        // Subtract '0's ASCII value (48) from the digit char's ASCII value to get the actual number.
+                        // e.g. '1' as u8 = 49, 49 - 48 = 1
+                        key = Some(KeyCombo::Digit(value as u8 - b'0'));
+                    } else if value.is_alphanumeric() {
+                        key = Some(KeyCombo::Char(value));
+                    }
+                }
+
+                let Some(key) = key else {
+                    return Err("Ctrl requires a key (digit or char)".to_string());
+                };
+                file.instructions.push(Instruction::Ctrl { key, modifiers })
             }
             None => unreachable!(),
             _ => return Err(format!("unkwown instruction: {:?}", keyword)),
@@ -304,6 +365,9 @@ Type@250ms "# this is a comment"
 Hide
 Show
 ExpectLine /check last line/
+Ctrl+A
+Ctrl+1
+Ctrl+Alt+B
 "##;
         let result = parse(input).unwrap();
         let pace = parse_duration("250ms").map(Some).unwrap();
@@ -328,6 +392,27 @@ ExpectLine /check last line/
                 Instruction::ExpectLine {
                     regex: "check last line".to_string(),
                     timeout: None,
+                },
+                Instruction::Ctrl {
+                    key: KeyCombo::Char('A'),
+                    modifiers: Modifiers {
+                        shift: false,
+                        alt: false
+                    }
+                },
+                Instruction::Ctrl {
+                    key: KeyCombo::Digit(1),
+                    modifiers: Modifiers {
+                        shift: false,
+                        alt: false
+                    }
+                },
+                Instruction::Ctrl {
+                    key: KeyCombo::Char('B'),
+                    modifiers: Modifiers {
+                        shift: false,
+                        alt: true
+                    }
                 },
             ]
         );

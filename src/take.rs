@@ -51,7 +51,6 @@ pub enum KeyCombo {
 /// Modifier state for chorded key presses.
 #[derive(Debug, PartialEq, Clone)]
 pub struct Modifiers {
-    pub ctrl: bool,
     pub shift: bool,
     pub alt: bool,
 }
