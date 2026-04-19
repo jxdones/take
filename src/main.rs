@@ -1,5 +1,6 @@
 use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
+use take::renderer;
 
 #[derive(Parser)]
 #[command(name = "take", about = "Script and replay terminal sessions")]
@@ -23,11 +24,14 @@ async fn main() -> Result<()> {
                 .with_context(|| format!("Failed to read .take file: {}", file.display()))?;
 
             let take_file = take::parser::parse(&content).map_err(|e| anyhow::anyhow!(e))?;
+            let output = take_file
+                .output
+                .clone()
+                .unwrap_or_else(|| "output.gif".to_string());
             let frames = take::player::play(take_file).await?;
-            println!("{} frames captured", frames.len());
-            for (i, frame) in frames.iter().enumerate() {
-                println!("\n--- frame {} ---\n{}", i + 1, frame.screen.contents());
-            }
+            println!("Rendering GIF...");
+            let _ = renderer::export_gif(&frames, &output);
+            println!("Done! Saved to {}", output);
             Ok(())
         }
     }

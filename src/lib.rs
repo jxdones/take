@@ -5,4 +5,5 @@
 //! - `player`: TBD
 pub mod parser;
 pub mod player;
+pub mod renderer;
 pub mod take;
