@@ -16,7 +16,7 @@ Early days — the parser and playback engine are still taking shape.
 |---|---|
 | `take play` | In progress |
 | `take rec` | Planned |
-| GIF / video export | Planned |
+| GIF / video export | In progess |
 
 ## Install
 
