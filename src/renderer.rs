@@ -1,8 +1,9 @@
 use crate::player::Frame;
 use anyhow::Result;
-use fontdue::{Font, FontSettings};
+use fontdue::{Font, FontSettings, Metrics};
 use image::{Rgb, RgbImage};
-use vt100::{Color};
+use std::collections::HashMap;
+use vt100::Color;
 
 const FONT_SIZE: f32 = 14.0;
 const COLS: u16 = 80;
@@ -16,6 +17,8 @@ pub fn export_gif(frames: &[Frame], output: &str) -> Result<()> {
     let line_metrics = font.horizontal_line_metrics(FONT_SIZE).unwrap();
     let cell_height = line_metrics.new_line_size as u32;
     let ascent = line_metrics.ascent as i32;
+
+    let mut glyph_cache: HashMap<char, (Metrics, Vec<u8>)> = HashMap::new();
 
     // 'M' is the conventional reference character for measuring monospace cell width.
     let (m_metrics, _) = font.rasterize('M', FONT_SIZE);
@@ -38,7 +41,9 @@ pub fn export_gif(frames: &[Frame], output: &str) -> Result<()> {
 
                     let contents = cell.contents();
                     let ch = contents.chars().next().unwrap_or(' ');
-                    let (glyph_metrics, bitmap) = font.rasterize(ch, FONT_SIZE);
+                    let (glyph_metrics, bitmap) = glyph_cache
+                        .entry(ch)
+                        .or_insert_with(|| font.rasterize(ch, FONT_SIZE));
 
                     // pixel coordinates of the top-left corner of the cell
                     let x = col as u32 * cell_width;
@@ -94,7 +99,7 @@ pub fn export_gif(frames: &[Frame], output: &str) -> Result<()> {
 fn color_to_rgb(color: Color, default: (u8, u8, u8)) -> (u8, u8, u8) {
     match color {
         Color::Rgb(r, g, b) => (r, g, b),
-        Color::Idx(n) => todo!(),
+        Color::Idx(_n) => todo!(),
         Color::Default => default,
     }
 }
