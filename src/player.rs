@@ -84,7 +84,7 @@ pub async fn play(take_file: TakeFile) -> Result<Vec<Frame>> {
                         vt.process(&bytes);
                     }
                     if let Some(p) = effective_pace {
-                        sleep(p.max(Duration::from_millis(50))).await;
+                        sleep(p).await;
                     }
                     if !hidden {
                         let frame_duration = effective_pace.unwrap_or(Duration::from_millis(50));
@@ -104,6 +104,7 @@ pub async fn play(take_file: TakeFile) -> Result<Vec<Frame>> {
                     Key::Left => "\x1b[D",
                     Key::Space => " ",
                     Key::Delete => "\x7f",
+                    Key::Escape => "\x1b",
                 };
 
                 for _ in 0..count {

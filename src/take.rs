@@ -12,6 +12,7 @@ pub enum Key {
     Down,
     Left,
     Right,
+    Escape,
 }
 
 /// A single step in a `.take` script.

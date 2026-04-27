@@ -117,6 +117,10 @@ pub fn parse(input: &str) -> Result<TakeFile, String> {
                 Key::Right,
                 parse_key_count("Right", rest)?,
             )),
+            Some("Escape") => file.instructions.push(Instruction::Press(
+                Key::Escape,
+                parse_key_count("Escape", rest)?,
+            )),
             Some("Sleep") => {
                 let Some(rest) = rest else {
                     return Err("Sleep requires a duration".to_string());
@@ -454,6 +458,8 @@ Ctrl+Alt+B
             ("Right", Ok(vec![Instruction::Press(Key::Right, 1)])),
             ("Tab 2", Ok(vec![Instruction::Press(Key::Tab, 2)])),
             ("Space", Ok(vec![Instruction::Press(Key::Space, 1)])),
+            ("Escape", Ok(vec![Instruction::Press(Key::Escape, 1)])),
+            ("Escape 3", Ok(vec![Instruction::Press(Key::Escape, 3)])),
         ];
 
         for (input, expected) in cases {
