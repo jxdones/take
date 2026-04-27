@@ -40,7 +40,13 @@ pub fn export_gif(frames: &[Frame], output: &str) -> Result<()> {
                     let fgcolor = cell.fgcolor();
 
                     let contents = cell.contents();
-                    let ch = contents.chars().next().unwrap_or(' ');
+                    let is_cursor = frame.screen.cursor_position() == (row, col)
+                        && !frame.screen.hide_cursor();
+                    let ch = if is_cursor {
+                        '_'
+                    } else {
+                        contents.chars().next().unwrap_or(' ')
+                    };
                     let (glyph_metrics, bitmap) = glyph_cache
                         .entry(ch)
                         .or_insert_with(|| font.rasterize(ch, FONT_SIZE));
@@ -88,7 +94,7 @@ pub fn export_gif(frames: &[Frame], output: &str) -> Result<()> {
         }
 
         let mut gif_frame = gif::Frame::from_rgb(width as u16, height as u16, img.as_raw());
-        gif_frame.delay = (frame.duration.as_millis() / 10) as u16;
+        gif_frame.delay = (frame.duration.as_millis() / 10).max(2) as u16;
         encoder.write_frame(&gif_frame)?;
     }
 
