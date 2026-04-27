@@ -45,6 +45,7 @@ fn spawn_shell(shell: &str) -> Result<Pty> {
 /// Runs a `.take` script against a live shell and returns the recorded screen frames.
 pub async fn play(take_file: TakeFile) -> Result<Vec<Frame>> {
     let shell = take_file.shell.as_deref().unwrap_or("zsh");
+    let global_pace = take_file.pace;
     let pty = spawn_shell(shell)?;
     let mut writer = pty.writer;
     let mut reader = pty.reader;
@@ -67,18 +68,30 @@ pub async fn play(take_file: TakeFile) -> Result<Vec<Frame>> {
         }
     });
 
+
     for instruction in take_file.instructions {
         match instruction {
             Instruction::Sleep(duration) => {
                 sleep(duration).await;
             }
-            Instruction::Type { text, .. } => {
-                writer.write_all(text.as_bytes())?;
-                writer.flush()?;
-                read_until_idle(&mut rx, &mut vt).await;
-                if !hidden {
-                    frames.push(snapshot(&vt, Duration::from_millis(500)));
+            Instruction::Type { text, pace } => {
+                let effective_pace = pace.or(global_pace);
+
+                for ch in text.chars() {
+                    writer.write_all(ch.to_string().as_bytes())?;
+                    writer.flush()?;
+                    while let Ok(bytes) = rx.try_recv() {
+                        vt.process(&bytes);
+                    }
+                    if let Some(p) = effective_pace {
+                        sleep(p.max(Duration::from_millis(50))).await;
+                    }
+                    if !hidden {
+                        let frame_duration = effective_pace.unwrap_or(Duration::from_millis(50));
+                        frames.push(snapshot(&vt, frame_duration));
+                    }
                 }
+                read_until_idle(&mut rx, &mut vt).await;
             }
             Instruction::Press(key, count) => {
                 let bytes = match key {
