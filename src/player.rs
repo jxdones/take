@@ -171,6 +171,11 @@ async fn expect_output(
 ) {
     let mut output = String::new();
     let re = Regex::new(regex).unwrap();
+
+    if re.is_match(&vt.screen().contents()) {
+        return;
+    }
+
     loop {
         match tokio::time::timeout(timeout.unwrap_or(Duration::from_secs(10)), rx.recv()).await {
             Ok(Some(bytes)) => {
