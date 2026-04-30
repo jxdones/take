@@ -8,6 +8,8 @@ use vt100::Color;
 const FONT_SIZE: f32 = 14.0;
 const COLS: u16 = 80;
 const ROWS: u16 = 24;
+const PADDING: u32 = 16;
+const DEFAULT_BG: (u8, u8, u8) = (0, 0, 0);
 
 // Renders each terminal frame as an image and encodes them into an animated GIF file.
 pub fn export_gif(frames: &[Frame], output: &str) -> Result<()> {
@@ -24,15 +26,16 @@ pub fn export_gif(frames: &[Frame], output: &str) -> Result<()> {
     let (m_metrics, _) = font.rasterize('M', FONT_SIZE);
     let cell_width = m_metrics.advance_width as u32;
 
-    let width = COLS as u32 * cell_width;
-    let height = ROWS as u32 * cell_height;
+    let width = COLS as u32 * cell_width + 2 * PADDING;
+    let height = ROWS as u32 * cell_height + 2 * PADDING;
 
     let mut file = std::fs::File::create(output)?;
     let mut encoder = gif::Encoder::new(&mut file, width as u16, height as u16, &[])?;
     encoder.set_repeat(gif::Repeat::Infinite)?;
 
+    let (bg_r, bg_g, bg_b) = DEFAULT_BG;
     for frame in frames {
-        let mut img = RgbImage::new(width, height);
+        let mut img = image::ImageBuffer::from_pixel(width, height, Rgb([bg_r, bg_g, bg_b]));
         for row in 0..ROWS {
             for col in 0..COLS {
                 if let Some(cell) = frame.screen.cell(row, col) {
@@ -52,10 +55,10 @@ pub fn export_gif(frames: &[Frame], output: &str) -> Result<()> {
                         .or_insert_with(|| font.rasterize(ch, FONT_SIZE));
 
                     // pixel coordinates of the top-left corner of the cell
-                    let x = col as u32 * cell_width;
-                    let y = row as u32 * cell_height;
+                    let x = col as u32 * cell_width + PADDING;
+                    let y = row as u32 * cell_height + PADDING;
 
-                    let (bg_r, bg_g, bg_b) = color_to_rgb(bgcolor, (0, 0, 0));
+                    let (bg_r, bg_g, bg_b) = color_to_rgb(bgcolor, DEFAULT_BG);
                     for py in y..y + cell_height {
                         for px in x..x + cell_width {
                             img.put_pixel(px, py, Rgb([bg_r, bg_g, bg_b]));
