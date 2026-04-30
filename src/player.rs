@@ -101,7 +101,7 @@ pub async fn play(take_file: TakeFile) -> Result<Vec<Frame>> {
             }
             Instruction::Press(key, count) => {
                 let bytes = match key {
-                    Key::Enter => "\n",
+                    Key::Enter => "\r",
                     Key::Backspace => "\x08",
                     Key::Tab => "\t",
                     Key::Up => "\x1b[A",
