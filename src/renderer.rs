@@ -1,4 +1,4 @@
-use crate::player::Frame;
+use crate::{box_drawing::draw_box_char, player::Frame};
 use anyhow::Result;
 use fontdue::{Font, FontSettings, Metrics};
 use image::{Rgb, RgbImage};
@@ -40,8 +40,8 @@ pub fn export_gif(frames: &[Frame], output: &str) -> Result<()> {
                     let fgcolor = cell.fgcolor();
 
                     let contents = cell.contents();
-                    let is_cursor = frame.screen.cursor_position() == (row, col)
-                        && !frame.screen.hide_cursor();
+                    let is_cursor =
+                        frame.screen.cursor_position() == (row, col) && !frame.screen.hide_cursor();
                     let ch = if is_cursor {
                         '_'
                     } else {
@@ -65,27 +65,43 @@ pub fn export_gif(frames: &[Frame], output: &str) -> Result<()> {
                     let (fg_r, fg_g, fg_b) = color_to_rgb(fgcolor, (255, 255, 255));
                     let baseline = y as i32 + ascent;
 
-                    for gy in 0..glyph_metrics.height {
-                        for gx in 0..glyph_metrics.width {
-                            // xmin/ymin offset the bitmap relative to the baseline and left edge of the cell
-                            let px = x as i32 + glyph_metrics.xmin + gx as i32;
-                            let py = baseline - glyph_metrics.ymin - glyph_metrics.height as i32
-                                + gy as i32;
+                    if let Some(strokes) = crate::box_drawing::strokes_for(ch) {
+                        draw_box_char(
+                            &strokes,
+                            x,
+                            y,
+                            cell_width,
+                            cell_height,
+                            (fg_r, fg_g, fg_b),
+                            &mut img,
+                        );
+                    } else {
+                        for gy in 0..glyph_metrics.height {
+                            for gx in 0..glyph_metrics.width {
+                                // xmin/ymin offset the bitmap relative to the baseline and left edge of the cell
+                                let px = x as i32 + glyph_metrics.xmin + gx as i32;
+                                let py =
+                                    baseline - glyph_metrics.ymin - glyph_metrics.height as i32
+                                        + gy as i32;
 
-                            // skip pixels that fall outside the image (e.g. tall Nerd Font icons)
-                            if px < 0 || px >= width as i32 || py < 0 || py >= height as i32 {
-                                continue;
-                            }
+                                // skip pixels that fall outside the image (e.g. tall Nerd Font icons)
+                                if px < 0 || px >= width as i32 || py < 0 || py >= height as i32 {
+                                    continue;
+                                }
 
-                            // coverage: how much of this pixel the letter's shape occupies (0=none, 255=fully inside).
-                            // edge pixels get a partial value, which we use to blend fg/bg for smooth curves.
-                            let coverage = bitmap[gy * glyph_metrics.width + gx];
-                            if coverage > 0 {
-                                let alpha = coverage as f32 / 255.0; // convert to 0.0–1.0 blend weight
-                                let r = (fg_r as f32 * alpha + bg_r as f32 * (1.0 - alpha)) as u8;
-                                let g = (fg_g as f32 * alpha + bg_g as f32 * (1.0 - alpha)) as u8;
-                                let b = (fg_b as f32 * alpha + bg_b as f32 * (1.0 - alpha)) as u8;
-                                img.put_pixel(px as u32, py as u32, Rgb([r, g, b]));
+                                // coverage: how much of this pixel the letter's shape occupies (0=none, 255=fully inside).
+                                // edge pixels get a partial value, which we use to blend fg/bg for smooth curves.
+                                let coverage = bitmap[gy * glyph_metrics.width + gx];
+                                if coverage > 0 {
+                                    let alpha = coverage as f32 / 255.0;
+                                    let r =
+                                        (fg_r as f32 * alpha + bg_r as f32 * (1.0 - alpha)) as u8;
+                                    let g =
+                                        (fg_g as f32 * alpha + bg_g as f32 * (1.0 - alpha)) as u8;
+                                    let b =
+                                        (fg_b as f32 * alpha + bg_b as f32 * (1.0 - alpha)) as u8;
+                                    img.put_pixel(px as u32, py as u32, Rgb([r, g, b]));
+                                }
                             }
                         }
                     }
@@ -93,7 +109,7 @@ pub fn export_gif(frames: &[Frame], output: &str) -> Result<()> {
             }
         }
 
-        let mut gif_frame = gif::Frame::from_rgb(width as u16, height as u16, img.as_raw());
+        let mut gif_frame = indexed_frame(&img, width as u16, height as u16);
         gif_frame.delay = (frame.duration.as_millis() / 10).max(2) as u16;
         encoder.write_frame(&gif_frame)?;
     }
@@ -101,11 +117,66 @@ pub fn export_gif(frames: &[Frame], output: &str) -> Result<()> {
     Ok(())
 }
 
+/// Encodes an `RgbImage` as a GIF frame using a direct indexed palette, avoiding NeuQuant dithering.
+/// Falls back to NeuQuant if the frame contains more than 256 unique colors.
+fn indexed_frame(img: &RgbImage, width: u16, height: u16) -> gif::Frame<'static> {
+    let mut color_to_idx: std::collections::HashMap<[u8; 3], u8> = std::collections::HashMap::new();
+    let mut palette: Vec<u8> = Vec::new();
+
+    let mut pixels: Vec<u8> = Vec::with_capacity((width as usize) * (height as usize));
+    for pixel in img.pixels() {
+        let rgb = pixel.0;
+        let next_idx = palette.len() / 3;
+        if next_idx >= 256 && !color_to_idx.contains_key(&rgb) {
+            return gif::Frame::from_rgb(width, height, img.as_raw());
+        }
+        let idx = if let Some(&i) = color_to_idx.get(&rgb) {
+            i
+        } else {
+            let i = next_idx as u8;
+            color_to_idx.insert(rgb, i);
+            palette.extend_from_slice(&rgb);
+            i
+        };
+        pixels.push(idx);
+    }
+
+    // GIF palette length must be a power of two, padded to at least 2 entries.
+    let palette_size = (palette.len() / 3).next_power_of_two().max(2);
+    palette.resize(palette_size * 3, 0);
+
+    gif::Frame {
+        width,
+        height,
+        palette: Some(palette),
+        buffer: std::borrow::Cow::Owned(pixels),
+        ..Default::default()
+    }
+}
+
 // Converts a vt100 terminal color to an RGB tuple, falling back to `default` for the default color.
 fn color_to_rgb(color: Color, default: (u8, u8, u8)) -> (u8, u8, u8) {
     match color {
         Color::Rgb(r, g, b) => (r, g, b),
-        Color::Idx(_n) => todo!(),
+        Color::Idx(n) => match n {
+            0 => (0, 0, 0),
+            1 => (128, 0, 0),
+            2 => (0, 128, 0),
+            3 => (128, 128, 0),
+            4 => (0, 0, 128),
+            5 => (128, 0, 128),
+            6 => (0, 128, 128),
+            7 => (192, 192, 192),
+            8 => (128, 128, 128),
+            9 => (255, 0, 0),
+            10 => (0, 255, 0),
+            11 => (255, 255, 0),
+            12 => (0, 0, 255),
+            13 => (255, 0, 255),
+            14 => (0, 255, 255),
+            15 => (255, 255, 255),
+            _ => default,
+        },
         Color::Default => default,
     }
 }

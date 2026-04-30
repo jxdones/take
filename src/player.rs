@@ -29,7 +29,8 @@ fn spawn_shell(shell: &str) -> Result<Pty> {
         pixel_height: 0,
     })?;
 
-    let cmd = CommandBuilder::new(shell);
+    let mut cmd = CommandBuilder::new(shell);
+    cmd.env("TERM", "xterm-256color");
     let child = pair.slave.spawn_command(cmd)?;
 
     let writer = pair.master.take_writer()?;
@@ -49,7 +50,7 @@ pub async fn play(take_file: TakeFile) -> Result<Vec<Frame>> {
     let pty = spawn_shell(shell)?;
     let mut writer = pty.writer;
     let mut reader = pty.reader;
-    let _child = pty.child;
+    let mut child = pty.child;
 
     let mut vt = vt100::Parser::new(24, 80, 0);
     let mut frames: Vec<Frame> = vec![];
@@ -68,11 +69,16 @@ pub async fn play(take_file: TakeFile) -> Result<Vec<Frame>> {
         }
     });
 
-
     for instruction in take_file.instructions {
         match instruction {
             Instruction::Sleep(duration) => {
                 sleep(duration).await;
+                while let Ok(bytes) = rx.try_recv() {
+                    vt.process(&bytes);
+                }
+                if !hidden {
+                    frames.push(snapshot(&vt, duration));
+                }
             }
             Instruction::Type { text, pace } => {
                 let effective_pace = pace.or(global_pace);
@@ -145,6 +151,7 @@ pub async fn play(take_file: TakeFile) -> Result<Vec<Frame>> {
         }
     }
 
+    let _ = child.kill();
     Ok(frames)
 }
 
@@ -183,10 +190,24 @@ async fn expect_output(
     timeout: Option<Duration>,
     last_line_only: bool,
 ) {
-    let mut output = String::new();
     let re = Regex::new(regex).unwrap();
 
-    if re.is_match(&vt.screen().contents()) {
+    let matches = |vt: &vt100::Parser| {
+        let contents = vt.screen().contents();
+        if last_line_only {
+            let last = contents
+                .lines()
+                .filter(|l| !l.trim().is_empty())
+                .last()
+                .unwrap_or("")
+                .to_string();
+            re.is_match(&last)
+        } else {
+            re.is_match(&contents)
+        }
+    };
+
+    if matches(vt) {
         return;
     }
 
@@ -194,16 +215,10 @@ async fn expect_output(
         match tokio::time::timeout(timeout.unwrap_or(Duration::from_secs(10)), rx.recv()).await {
             Ok(Some(bytes)) => {
                 vt.process(&bytes);
-                output.push_str(&String::from_utf8_lossy(&bytes));
             }
             _ => break,
         }
-        let target = if last_line_only {
-            output.lines().last().unwrap_or("")
-        } else {
-            &output
-        };
-        if re.is_match(target) {
+        if matches(vt) {
             break;
         }
     }
