@@ -5,6 +5,8 @@ use regex::Regex;
 use std::io::{Read, Write};
 use tokio::time::{Duration, sleep};
 
+const PTY_IDLE_TIMEOUT: Duration = Duration::from_millis(50);
+
 /// A snapshot of the terminal screen at a point in time, with how long it should be displayed.
 pub struct Frame {
     pub screen: vt100::Screen,
@@ -198,7 +200,7 @@ fn ctrl_bytes_from_keycombo(key: &KeyCombo, alt: bool) -> Vec<u8> {
 
 /// Waits for the terminal to settle by consuming output until the PTY goes quiet for 50ms.
 async fn read_until_idle(rx: &mut tokio::sync::mpsc::Receiver<Vec<u8>>, vt: &mut vt100::Parser) {
-    while let Ok(Some(bytes)) = tokio::time::timeout(Duration::from_millis(50), rx.recv()).await {
+    while let Ok(Some(bytes)) = tokio::time::timeout(PTY_IDLE_TIMEOUT, rx.recv()).await {
         vt.process(&bytes);
     }
 }
