@@ -66,6 +66,18 @@ pub fn parse(input: &str) -> Result<TakeFile, String> {
                         };
                         file.pace = parse_duration(value).map(Some)?;
                     }
+                    Some("Columns") => {
+                        let Some(value) = value else {
+                            return Err("Columns setting requires a value.".to_string());
+                        };
+                        file.cols = Some(value.to_string());
+                    }
+                    Some("Rows") => {
+                        let Some(value) = value else {
+                            return Err("Rows setting requires a value.".to_string());
+                        };
+                        file.rows = Some(value.to_string());
+                    }
                     Some(unkwown) => return Err(format!("unkwown setting: {}", unkwown)),
                     None => return Err("Set requires a setting name".to_string()),
                 }
@@ -362,6 +374,9 @@ mod tests {
 Set Shell zsh
 Set Output demo.gif
 Set Pace 250ms
+Set Columns 100
+Set Rows 24
+
 Sleep 1s
 Expect /hel\/lo/ @timeout 5s
 Enter 3
@@ -378,6 +393,8 @@ Ctrl+Alt+B
         assert_eq!(result.shell, Some("zsh".to_string()));
         assert_eq!(result.output, Some("demo.gif".to_string()));
         assert_eq!(result.pace, pace);
+        assert_eq!(result.cols, Some("100".to_string()));
+        assert_eq!(result.rows, Some("24".to_string()));
         assert_eq!(
             result.instructions,
             vec![

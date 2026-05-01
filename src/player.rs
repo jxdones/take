@@ -52,7 +52,18 @@ pub async fn play(take_file: TakeFile) -> Result<Vec<Frame>> {
     let mut reader = pty.reader;
     let mut child = pty.child;
 
-    let mut vt = vt100::Parser::new(24, 80, 0);
+    let cols = take_file
+        .cols
+        .unwrap_or_default()
+        .parse::<u16>()
+        .unwrap_or(80);
+    let rows = take_file
+        .rows
+        .unwrap_or_default()
+        .parse::<u16>()
+        .unwrap_or(24);
+
+    let mut vt = vt100::Parser::new(rows, cols, 0);
     let mut frames: Vec<Frame> = vec![];
     let mut hidden = false;
 
@@ -207,11 +218,9 @@ async fn expect_output(
         if last_line_only {
             let last = contents
                 .lines()
-                .filter(|l| !l.trim().is_empty())
-                .last()
-                .unwrap_or("")
-                .to_string();
-            re.is_match(&last)
+                .rfind(|l| !l.trim().is_empty())
+                .unwrap_or("");
+            re.is_match(last)
         } else {
             re.is_match(&contents)
         }

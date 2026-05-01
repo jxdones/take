@@ -61,6 +61,8 @@ pub struct Modifiers {
 pub struct TakeFile {
     pub shell: Option<String>,
     pub output: Option<String>,
+    pub cols: Option<String>,
+    pub rows: Option<String>,
     pub pace: Option<Duration>,
     pub instructions: Vec<Instruction>,
 }

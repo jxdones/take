@@ -28,10 +28,25 @@ async fn main() -> Result<()> {
                 .output
                 .clone()
                 .unwrap_or_else(|| "output.gif".to_string());
+            let cols = take_file
+                .cols
+                .clone()
+                .unwrap_or_default()
+                .parse::<u16>()
+                .unwrap_or(80);
+            let rows = take_file
+                .rows
+                .clone()
+                .unwrap_or_default()
+                .parse::<u16>()
+                .unwrap_or(24);
+
             let frames = take::player::play(take_file).await?;
             println!("Rendering GIF...");
-            let _ = renderer::export_gif(&frames, &output);
+
+            let _ = renderer::export_gif(&frames, rows, cols, &output);
             println!("Done! Saved to {}", output);
+
             Ok(())
         }
     }

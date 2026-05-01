@@ -6,13 +6,11 @@ use std::collections::HashMap;
 use vt100::Color;
 
 const FONT_SIZE: f32 = 14.0;
-const COLS: u16 = 80;
-const ROWS: u16 = 24;
 const PADDING: u32 = 16;
 const DEFAULT_BG: (u8, u8, u8) = (0, 0, 0);
 
 // Renders each terminal frame as an image and encodes them into an animated GIF file.
-pub fn export_gif(frames: &[Frame], output: &str) -> Result<()> {
+pub fn export_gif(frames: &[Frame], cols: u16, rows: u16, output: &str) -> Result<()> {
     let font_bytes: &[u8] = include_bytes!("../assets/JetBrainsMonoNerdFont-Regular.ttf");
     let font = Font::from_bytes(font_bytes, FontSettings::default()).unwrap();
 
@@ -26,8 +24,8 @@ pub fn export_gif(frames: &[Frame], output: &str) -> Result<()> {
     let (m_metrics, _) = font.rasterize('M', FONT_SIZE);
     let cell_width = m_metrics.advance_width as u32;
 
-    let width = COLS as u32 * cell_width + 2 * PADDING;
-    let height = ROWS as u32 * cell_height + 2 * PADDING;
+    let width = cols as u32 * cell_width + 2 * PADDING;
+    let height = rows as u32 * cell_height + 2 * PADDING;
 
     let mut file = std::fs::File::create(output)?;
     let mut encoder = gif::Encoder::new(&mut file, width as u16, height as u16, &[])?;
@@ -36,8 +34,8 @@ pub fn export_gif(frames: &[Frame], output: &str) -> Result<()> {
     let (bg_r, bg_g, bg_b) = DEFAULT_BG;
     for frame in frames {
         let mut img = image::ImageBuffer::from_pixel(width, height, Rgb([bg_r, bg_g, bg_b]));
-        for row in 0..ROWS {
-            for col in 0..COLS {
+        for row in 0..rows {
+            for col in 0..cols {
                 if let Some(cell) = frame.screen.cell(row, col) {
                     let bgcolor = cell.bgcolor();
                     let fgcolor = cell.fgcolor();
