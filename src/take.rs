@@ -1,3 +1,4 @@
+use std::fmt;
 use std::time::Duration;
 
 /// Special keys that can be pressed as part of a recording.
@@ -65,4 +66,22 @@ pub struct TakeFile {
     pub rows: Option<String>,
     pub pace: Option<Duration>,
     pub instructions: Vec<Instruction>,
+}
+
+impl fmt::Display for Instruction {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Instruction::Type { text, .. } => write!(f, "Type \"{}\"", text),
+            Instruction::Press(key, count) => write!(f, "{:?} x{}", key, count),
+            Instruction::Ctrl { key, .. } => match key {
+                KeyCombo::Char(c) => write!(f, "Ctrl+{}", c.to_ascii_uppercase()),
+                KeyCombo::Digit(d) => write!(f, "Ctrl+{}", d),
+            },
+            Instruction::Sleep(duration) => write!(f, "Sleep {}ms", duration.as_millis()),
+            Instruction::Expect { regex, .. } => write!(f, "Expect /{}/", regex),
+            Instruction::ExpectLine { regex, .. } => write!(f, "ExpectLine /{}/", regex),
+            Instruction::Hide => write!(f, "Hide"),
+            Instruction::Show => write!(f, "Show"),
+        }
+    }
 }

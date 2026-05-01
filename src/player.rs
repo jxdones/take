@@ -81,6 +81,7 @@ pub async fn play(take_file: TakeFile) -> Result<Vec<Frame>> {
     });
 
     for instruction in take_file.instructions {
+        println!("{}", instruction);
         match instruction {
             Instruction::Sleep(duration) => {
                 sleep(duration).await;
