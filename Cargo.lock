@@ -1232,6 +1232,7 @@ dependencies = [
  "image",
  "portable-pty",
  "regex",
+ "thiserror 2.0.18",
  "tokio",
  "vt100",
 ]

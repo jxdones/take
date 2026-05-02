@@ -17,3 +17,4 @@ vt100 = { version = "0.16.2" }
 fontdue = "0.9.3"
 image = "0.25.10"
 gif = "0.14.2"
+thiserror = "2.0.18"

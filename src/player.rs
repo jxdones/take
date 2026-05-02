@@ -22,6 +22,30 @@ struct Pty {
     child: Box<dyn portable_pty::Child + Send>,
 }
 
+/// Errors that can occur while playing a `.take` script in the PTY session.
+#[derive(Debug, thiserror::Error)]
+pub enum PlayerError {
+    #[error("invalid regex in expect: {pattern}: {source}")]
+    InvalidRegex {
+        pattern: String,
+        #[source]
+        source: regex::Error,
+    },
+
+    #[error("timed out after {timeout_ms}ms waiting for pattern {pattern}")]
+    ExpectTimeout {
+        pattern: String,
+        timeout_ms: u64,
+        last_line_only: bool,
+    },
+
+    #[error("output stream closed before pattern {pattern} appeared")]
+    StreamClosed {
+        pattern: String,
+        last_line_only: bool,
+    },
+}
+
 /// Opens a PTY, launches the given shell inside it, and returns the live session.
 fn spawn_shell(shell: &str, cols: u16, rows: u16) -> Result<Pty> {
     let pty_system = native_pty_system();
@@ -61,7 +85,6 @@ pub async fn play(take_file: TakeFile) -> Result<Vec<Frame>> {
     let mut child = pty.child;
 
     let mut vt = vt100::Parser::new(rows, cols, 0);
-    let mut frames: Vec<Frame> = vec![];
     let mut hidden = false;
 
     let (tx, mut rx) = tokio::sync::mpsc::channel::<Vec<u8>>(100);
@@ -69,95 +92,104 @@ pub async fn play(take_file: TakeFile) -> Result<Vec<Frame>> {
     tokio::task::spawn_blocking(move || {
         let mut buf = vec![0u8; 1024];
         loop {
-            let n = reader.read(&mut buf).unwrap();
-            if n == 0 {
-                break;
+            match reader.read(&mut buf) {
+                Ok(0) => break,
+                Ok(n) => {
+                    let _ = tx.blocking_send(buf[..n].to_vec());
+                }
+                Err(_) => break,
             }
-            let _ = tx.blocking_send(buf[..n].to_vec());
         }
     });
 
-    for instruction in take_file.instructions {
-        println!("{}", instruction);
-        match instruction {
-            Instruction::Sleep(duration) => {
-                sleep(duration).await;
-                while let Ok(bytes) = rx.try_recv() {
-                    vt.process(&bytes);
-                }
-                if !hidden {
-                    frames.push(snapshot(&vt, duration));
-                }
-            }
-            Instruction::Type { text, pace } => {
-                let effective_pace = pace.or(global_pace);
+    let result: Result<Vec<Frame>> = async {
+        let mut frames: Vec<Frame> = vec![];
 
-                for ch in text.chars() {
-                    writer.write_all(ch.to_string().as_bytes())?;
-                    writer.flush()?;
+        for instruction in take_file.instructions {
+            println!("{}", instruction);
+            match instruction {
+                Instruction::Sleep(duration) => {
+                    sleep(duration).await;
                     while let Ok(bytes) = rx.try_recv() {
                         vt.process(&bytes);
                     }
-                    if let Some(p) = effective_pace {
-                        sleep(p).await;
-                    }
                     if !hidden {
-                        let frame_duration = effective_pace.unwrap_or(Duration::from_millis(50));
-                        frames.push(snapshot(&vt, frame_duration));
+                        frames.push(snapshot(&vt, duration));
                     }
                 }
-                read_until_idle(&mut rx, &mut vt).await;
-            }
-            Instruction::Press(key, count) => {
-                let bytes = match key {
-                    Key::Enter => "\r",
-                    Key::Backspace => "\x08",
-                    Key::Tab => "\t",
-                    Key::Up => "\x1b[A",
-                    Key::Down => "\x1b[B",
-                    Key::Right => "\x1b[C",
-                    Key::Left => "\x1b[D",
-                    Key::Space => " ",
-                    Key::Delete => "\x7f",
-                    Key::Escape => "\x1b",
-                };
+                Instruction::Type { text, pace } => {
+                    let effective_pace = pace.or(global_pace);
 
-                for _ in 0..count {
-                    writer.write_all(bytes.as_bytes())?;
+                    for ch in text.chars() {
+                        writer.write_all(ch.to_string().as_bytes())?;
+                        writer.flush()?;
+                        while let Ok(bytes) = rx.try_recv() {
+                            vt.process(&bytes);
+                        }
+                        if let Some(p) = effective_pace {
+                            sleep(p).await;
+                        }
+                        if !hidden {
+                            let frame_duration =
+                                effective_pace.unwrap_or(Duration::from_millis(50));
+                            frames.push(snapshot(&vt, frame_duration));
+                        }
+                    }
+                    read_until_idle(&mut rx, &mut vt).await;
                 }
-                writer.flush()?;
-                read_until_idle(&mut rx, &mut vt).await;
-                if !hidden {
+                Instruction::Press(key, count) => {
+                    let bytes = match key {
+                        Key::Enter => "\r",
+                        Key::Backspace => "\x08",
+                        Key::Tab => "\t",
+                        Key::Up => "\x1b[A",
+                        Key::Down => "\x1b[B",
+                        Key::Right => "\x1b[C",
+                        Key::Left => "\x1b[D",
+                        Key::Space => " ",
+                        Key::Delete => "\x7f",
+                        Key::Escape => "\x1b",
+                    };
+
+                    for _ in 0..count {
+                        writer.write_all(bytes.as_bytes())?;
+                    }
+                    writer.flush()?;
+                    read_until_idle(&mut rx, &mut vt).await;
+                    if !hidden {
+                        frames.push(snapshot(&vt, Duration::from_millis(500)));
+                    }
+                }
+                Instruction::Ctrl { key, modifiers } => {
+                    let bytes = ctrl_bytes_from_keycombo(&key, modifiers.alt);
+                    writer.write_all(&bytes)?;
+                    writer.flush()?;
+                    read_until_idle(&mut rx, &mut vt).await;
+                    if !hidden {
+                        frames.push(snapshot(&vt, Duration::from_millis(500)));
+                    }
+                }
+                Instruction::Expect { regex, timeout } => {
+                    expect_output(&mut rx, &mut vt, &regex, timeout, false).await?;
+                }
+                Instruction::ExpectLine { regex, timeout } => {
+                    expect_output(&mut rx, &mut vt, &regex, timeout, true).await?;
+                }
+                Instruction::Hide => {
+                    hidden = true;
+                }
+                Instruction::Show => {
+                    hidden = false;
                     frames.push(snapshot(&vt, Duration::from_millis(500)));
                 }
-            }
-            Instruction::Ctrl { key, modifiers } => {
-                let bytes = ctrl_bytes_from_keycombo(&key, modifiers.alt);
-                writer.write_all(&bytes)?;
-                writer.flush()?;
-                read_until_idle(&mut rx, &mut vt).await;
-                if !hidden {
-                    frames.push(snapshot(&vt, Duration::from_millis(500)));
-                }
-            }
-            Instruction::Expect { regex, timeout } => {
-                expect_output(&mut rx, &mut vt, &regex, timeout, false).await;
-            }
-            Instruction::ExpectLine { regex, timeout } => {
-                expect_output(&mut rx, &mut vt, &regex, timeout, true).await;
-            }
-            Instruction::Hide => {
-                hidden = true;
-            }
-            Instruction::Show => {
-                hidden = false;
-                frames.push(snapshot(&vt, Duration::from_millis(500)));
             }
         }
+        Ok(frames)
     }
+    .await;
 
     let _ = child.kill();
-    Ok(frames)
+    result
 }
 
 /// A point-in-time capture of the terminal screen, ready to be rendered.
@@ -208,8 +240,11 @@ async fn expect_output(
     regex: &str,
     timeout: Option<Duration>,
     last_line_only: bool,
-) {
-    let re = Regex::new(regex).unwrap();
+) -> Result<(), PlayerError> {
+    let re = Regex::new(regex).map_err(|source| PlayerError::InvalidRegex {
+        pattern: regex.to_string(),
+        source,
+    })?;
 
     let matches = |vt: &vt100::Parser| {
         let contents = vt.screen().contents();
@@ -225,18 +260,42 @@ async fn expect_output(
     };
 
     if matches(vt) {
-        return;
+        return Ok(());
     }
 
+    let timeout = timeout.unwrap_or(Duration::from_secs(10));
+    let deadline = tokio::time::Instant::now() + timeout;
+
     loop {
-        match tokio::time::timeout(timeout.unwrap_or(Duration::from_secs(10)), rx.recv()).await {
+        let now = tokio::time::Instant::now();
+        let Some(remaining) = deadline.checked_duration_since(now) else {
+            return Err(PlayerError::ExpectTimeout {
+                pattern: regex.to_string(),
+                timeout_ms: timeout.as_millis() as u64,
+                last_line_only,
+            });
+        };
+
+        match tokio::time::timeout(remaining, rx.recv()).await {
             Ok(Some(bytes)) => {
                 vt.process(&bytes);
             }
-            _ => break,
+            Ok(None) => {
+                return Err(PlayerError::StreamClosed {
+                    pattern: regex.to_string(),
+                    last_line_only,
+                });
+            }
+            Err(_) => {
+                return Err(PlayerError::ExpectTimeout {
+                    pattern: regex.to_string(),
+                    timeout_ms: timeout.as_millis() as u64,
+                    last_line_only,
+                });
+            }
         }
         if matches(vt) {
-            break;
+            return Ok(());
         }
     }
 }
