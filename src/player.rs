@@ -6,6 +6,8 @@ use std::io::{Read, Write};
 use tokio::time::{Duration, sleep};
 
 const PTY_IDLE_TIMEOUT: Duration = Duration::from_millis(50);
+pub const DEFAULT_COLS: u16 = 80;
+pub const DEFAULT_ROWS: u16 = 24;
 
 /// A snapshot of the terminal screen at a point in time, with how long it should be displayed.
 pub struct Frame {
@@ -21,12 +23,12 @@ struct Pty {
 }
 
 /// Opens a PTY, launches the given shell inside it, and returns the live session.
-fn spawn_shell(shell: &str) -> Result<Pty> {
+fn spawn_shell(shell: &str, cols: u16, rows: u16) -> Result<Pty> {
     let pty_system = native_pty_system();
 
     let pair = pty_system.openpty(PtySize {
-        cols: 80,
-        rows: 24,
+        cols,
+        rows,
         pixel_width: 0,
         pixel_height: 0,
     })?;
@@ -49,21 +51,14 @@ fn spawn_shell(shell: &str) -> Result<Pty> {
 pub async fn play(take_file: TakeFile) -> Result<Vec<Frame>> {
     let shell = take_file.shell.as_deref().unwrap_or("zsh");
     let global_pace = take_file.pace;
-    let pty = spawn_shell(shell)?;
+
+    let cols = take_file.cols.unwrap_or(DEFAULT_COLS);
+    let rows = take_file.rows.unwrap_or(DEFAULT_ROWS);
+
+    let pty = spawn_shell(shell, cols, rows)?;
     let mut writer = pty.writer;
     let mut reader = pty.reader;
     let mut child = pty.child;
-
-    let cols = take_file
-        .cols
-        .unwrap_or_default()
-        .parse::<u16>()
-        .unwrap_or(80);
-    let rows = take_file
-        .rows
-        .unwrap_or_default()
-        .parse::<u16>()
-        .unwrap_or(24);
 
     let mut vt = vt100::Parser::new(rows, cols, 0);
     let mut frames: Vec<Frame> = vec![];

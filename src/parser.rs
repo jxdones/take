@@ -70,15 +70,23 @@ pub fn parse(input: &str) -> Result<TakeFile, String> {
                         let Some(value) = value else {
                             return Err("Columns setting requires a value.".to_string());
                         };
-                        file.cols = Some(value.to_string());
+                        file.cols = Some(
+                            value
+                                .parse::<u16>()
+                                .map_err(|_| "Columns must be a valid number".to_string())?,
+                        );
                     }
                     Some("Rows") => {
                         let Some(value) = value else {
                             return Err("Rows setting requires a value.".to_string());
                         };
-                        file.rows = Some(value.to_string());
+                        file.rows = Some(
+                            value
+                                .parse::<u16>()
+                                .map_err(|_| "Rows must be a valid number".to_string())?,
+                        );
                     }
-                    Some(unkwown) => return Err(format!("unkwown setting: {}", unkwown)),
+                    Some(unknown) => return Err(format!("unknown setting: {}", unknown)),
                     None => return Err("Set requires a setting name".to_string()),
                 }
             }
@@ -208,8 +216,8 @@ pub fn parse(input: &str) -> Result<TakeFile, String> {
                         (Some("@timeout"), Some(_), Some(_)) => {
                             return Err("too many tokens after @timeout".to_string());
                         }
-                        (Some(unkwown), _, _) => {
-                            return Err(format!("unkwown ExpectLine modifier: {}", unkwown));
+                        (Some(unknown), _, _) => {
+                            return Err(format!("unknown ExpectLine modifier: {}", unknown));
                         }
                         _ => {
                             return Err(
@@ -284,7 +292,7 @@ pub fn parse(input: &str) -> Result<TakeFile, String> {
                 file.instructions.push(Instruction::Ctrl { key, modifiers })
             }
             None => unreachable!(),
-            _ => return Err(format!("unkwown instruction: {:?}", keyword)),
+            _ => return Err(format!("unknown instruction: {:?}", keyword)),
         }
     }
     Ok(file)
@@ -307,7 +315,7 @@ fn parse_duration(input: &str) -> Result<Duration, String> {
         let secs = value.parse::<u64>().map_err(|e| e.to_string())?;
         Ok(Duration::from_secs(secs))
     } else {
-        Err(format!("unkown duration: {:?}", input.to_string()))
+        Err(format!("unknown duration: {:?}", input.to_string()))
     }
 }
 
@@ -393,8 +401,8 @@ Ctrl+Alt+B
         assert_eq!(result.shell, Some("zsh".to_string()));
         assert_eq!(result.output, Some("demo.gif".to_string()));
         assert_eq!(result.pace, pace);
-        assert_eq!(result.cols, Some("100".to_string()));
-        assert_eq!(result.rows, Some("24".to_string()));
+        assert_eq!(result.cols, Some(100u16));
+        assert_eq!(result.rows, Some(24u16));
         assert_eq!(
             result.instructions,
             vec![
@@ -450,7 +458,7 @@ Ctrl+Alt+B
                 "ten seconds",
                 Err("invalid digit found in string".to_string()),
             ),
-            ("", Err("unkown duration: \"\"".to_string())),
+            ("", Err("unknown duration: \"\"".to_string())),
         ];
 
         for (input, expected) in cases {

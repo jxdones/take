@@ -111,6 +111,7 @@ pub fn export_gif(frames: &[Frame], cols: u16, rows: u16, output: &str) -> Resul
         }
 
         let mut gif_frame = indexed_frame(&img, width as u16, height as u16);
+        // GIF delay is in centiseconds. Browsers clamp delays below 2cs (20ms) to 100ms
         gif_frame.delay = (frame.duration.as_millis() / 10).max(2) as u16;
         encoder.write_frame(&gif_frame)?;
     }
