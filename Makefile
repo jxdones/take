@@ -4,7 +4,7 @@ APP := take
 SCRIPT ?= demo.take
 ARGS ?=
 
-.PHONY: help build run play check test fmt lint ci release install clean
+.PHONY: help build run play check test fmt lint audit ci ci-full release install clean
 
 help:
 	@printf "\n"
@@ -17,7 +17,9 @@ help:
 	@printf "  %-12s %s\n" "test" "Run tests."
 	@printf "  %-12s %s\n" "fmt" "Format Rust code."
 	@printf "  %-12s %s\n" "lint" "Run clippy and fail on warnings."
+	@printf "  %-12s %s\n" "audit" "Run cargo audit."
 	@printf "  %-12s %s\n" "ci" "Run fmt + lint + test checks."
+	@printf "  %-12s %s\n" "ci-full" "Run fmt + lint + test + audit checks."
 	@printf "  %-12s %s\n" "release" "Build optimized release binary."
 	@printf "  %-12s %s\n" "install" "Install binary from this path."
 	@printf "  %-12s %s\n" "clean" "Remove Cargo build artifacts."
@@ -48,7 +50,12 @@ fmt:
 lint:
 	cargo clippy --all-targets -- -D warnings
 
+audit:
+	cargo audit
+
 ci: fmt lint test
+
+ci-full: fmt lint test audit
 
 release:
 	cargo build --release
