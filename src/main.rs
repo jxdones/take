@@ -35,7 +35,7 @@ async fn main() -> Result<()> {
             let frames = take::player::play(take_file).await?;
             println!("Rendering GIF...");
 
-            let _ = renderer::export_gif(&frames, cols, rows, &output);
+            renderer::export_gif(&frames, cols, rows, &output)?;
             println!("Done! Saved to {}", output);
 
             Ok(())

@@ -12,9 +12,12 @@ const DEFAULT_BG: (u8, u8, u8) = (0, 0, 0);
 // Renders each terminal frame as an image and encodes them into an animated GIF file.
 pub fn export_gif(frames: &[Frame], cols: u16, rows: u16, output: &str) -> Result<()> {
     let font_bytes: &[u8] = include_bytes!("../assets/JetBrainsMonoNerdFont-Regular.ttf");
-    let font = Font::from_bytes(font_bytes, FontSettings::default()).unwrap();
+    let font = Font::from_bytes(font_bytes, FontSettings::default())
+        .map_err(|e| anyhow::anyhow!("failed to load embedded font: {e}"))?;
 
-    let line_metrics = font.horizontal_line_metrics(FONT_SIZE).unwrap();
+    let line_metrics = font
+        .horizontal_line_metrics(FONT_SIZE)
+        .ok_or_else(|| anyhow::anyhow!("font has no horizontal line metrics"))?;
     let cell_height = line_metrics.new_line_size as u32;
     let ascent = line_metrics.ascent as i32;
 
