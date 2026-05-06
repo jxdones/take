@@ -197,28 +197,40 @@ pub fn draw_box_char(
     match strokes.right {
         Weight::Light => fill(cx, cy, x + cell_width, cy + 1),
         Weight::Heavy => fill(cx, cy - 1, x + cell_width, cy + 1),
-        Weight::Double => todo!(),
+        Weight::Double => {
+            fill(cx, cy - 1, x + cell_width, cy);
+            fill(cx, cy + 1, x + cell_width, cy + 2);
+        }
         Weight::None => {}
     }
 
     match strokes.left {
         Weight::Light => fill(x, cy, cx, cy + 1),
         Weight::Heavy => fill(x, cy - 1, cx, cy + 1),
-        Weight::Double => todo!(),
+        Weight::Double => {
+            fill(x, cy - 1, cx, cy);
+            fill(x, cy + 1, cx, cy + 2);
+        }
         Weight::None => {}
     }
 
     match strokes.top {
         Weight::Light => fill(cx, y, cx + 1, cy),
         Weight::Heavy => fill(cx - 1, y, cx + 1, cy),
-        Weight::Double => todo!(),
+        Weight::Double => {
+            fill(cx - 1, y, cx, cy);
+            fill(cx + 1, y, cx + 2, cy);
+        }
         Weight::None => {}
     }
 
     match strokes.bottom {
         Weight::Light => fill(cx, cy, cx + 1, y + cell_height),
         Weight::Heavy => fill(cx - 1, cy, cx + 1, y + cell_height),
-        Weight::Double => todo!(),
+        Weight::Double => {
+            fill(cx - 1, cy, cx, y + cell_height);
+            fill(cx + 1, cy, cx + 2, y + cell_height);
+        }
         Weight::None => {}
     }
 }
